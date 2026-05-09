@@ -1,23 +1,8 @@
 -- ==========================================
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
-local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/main/Library.lua"
-
--- Use a safer loading method
-local success, Library = pcall(function()
-    return loadstring(game:HttpGet(loadUrl))()
-end)
-
-if not success or type(Library) ~= "table" then
-    warn("[SedseHub] Failed to load Library from GitHub. Using dummy fallback.")
-    Library = {
-        window = function() return { Tab = function() return { Section = function() return {} end end end, toggle_menu = function() end } end,
-        create_notification = function(_, cfg) print("Notification: " .. tostring(cfg.name)) end
-    }
-end
-
--- Use Library itself for notifications if they are part of the same table
-local Notifications = Library 
+local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/refs/heads/main/Library.lua?t=" .. tostring(tick())
+local Library, Notifications = loadstring(game:HttpGet(loadUrl))()
 
 -- ==========================================
 -- 2. CONFIGURATION & STATE
@@ -61,6 +46,7 @@ local ESP_CONFIG = {
     Item     = { Enabled = false, Color = Color3.fromRGB(255, 215, 0)   }
 }
 
+-- UI Mapping for Config System
 local UI_Elements = {
     CONFIG = {},
     LOCK_CONFIG = {},
@@ -112,14 +98,13 @@ local DivergentFistRemote = ReplicatedStorage:WaitForChild("Knit"):WaitForChild(
 local ACTeleportRemote = ReplicatedStorage:WaitForChild("Knit"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("AntiCheatService"):WaitForChild("RE"):WaitForChild("Teleport")
 
 -- =======================================================
--- GLOBAL BLACKFLASH HOOK
+-- GLOBAL BLACKFLASH HOOK (Mobile Safe)
 -- =======================================================
 local isComboing = false 
 local isAutoFiring = false 
 
 local oldNamecall
 local hookSuccess = pcall(function()
-    if not hookmetamethod then return error("No hookmetamethod") end
     oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
         if isUnloaded then return oldNamecall(self, ...) end
         local args = {...}
@@ -143,6 +128,9 @@ local hookSuccess = pcall(function()
     end)
 end)
 
+if not hookSuccess then
+    warn("[SedseHub] hookmetamethod not supported on this executor. BlackFlash Hook disabled.")
+end
 -- =======================================================
 -- 3. CORE LOGIC ENGINES
 -- =======================================================
@@ -175,9 +163,8 @@ local function getClosestTarget()
     return closestTarget
 end
 
--- MIDI Parser (Simplified for stability)
+-- MIDI Parser
 local function parseMidi(data)
-    -- Parser logic remains same, assuming hex/binary logic is correct for intended MIDI files
     local pos = 1
     local function rb() local b = string.byte(data, pos); pos = pos + 1; return b end
     local function rs(len) local s = string.sub(data, pos, pos + len - 1); pos = pos + len; return s end
@@ -237,7 +224,6 @@ local function parseMidi(data)
     return res
 end
 
--- Piano Key Maps
 local piano_nm = {
     [60]="1",[62]="2",[64]="3",[65]="4",[67]="5",[69]="6",[71]="7",[72]="8",[74]="9",[76]="0",
     [77]="q",[79]="w",[81]="e",[83]="r",[84]="t",[86]="y",[88]="u",[89]="i",[91]="o",[93]="p",
@@ -286,6 +272,17 @@ local function piano_playChord(ks)
     end)
 end
 
+local function fireDivergentStrike(character)
+    local moveset = character:FindFirstChild("Moveset")
+    if moveset then
+        local move = moveset:FindFirstChild("Divergent Fist")
+        if move then 
+            DivergentFistRemote:FireServer(move) 
+        end
+    end
+end
+
+-- FIXED: This function was the cause of the script not executing
 local function executePlantedLock(root, target, humanoid)
     local lockStartTime = tick()
     local plantedPosition = root.Position
@@ -317,10 +314,18 @@ local function executeSmoothArchCombo()
     if not root or not humanoid then return end
     
     local target = getClosestTarget()
-    if not target then return end
-    if tick() - lastExecutionTime < CONFIG.DashCooldown then return end
+    if not target then 
+        notify("No target in range! (Max: " .. CONFIG.MaxTargetDist .. " studs)", "Warning")
+        return 
+    end
+    
+    if tick() - lastExecutionTime < CONFIG.DashCooldown then 
+        notify("Dash is on cooldown!", "Warning")
+        return 
+    end
     
     lastExecutionTime = tick()
+
     local p0 = root.Position
     local offsetToPlayer = p0 - target.Position
     local isDashLeft = target.CFrame.RightVector:Dot(offsetToPlayer) > 0
@@ -329,12 +334,10 @@ local function executeSmoothArchCombo()
 
     isComboing = true
     
-    -- Fire Blackflash
-    local moveset = character:FindFirstChild("Moveset")
-    if moveset then
-        local move = moveset:FindFirstChild("Divergent Fist")
-        if move then DivergentFistRemote:FireServer(move) end
-    end
+    fireDivergentStrike(character)
+    task.delay(CONFIG.BlackFlashDelay, function() 
+        fireDivergentStrike(character) 
+    end)
 
     if isBehind and isOptimalRange then
         humanoid.AutoRotate = false
@@ -375,24 +378,116 @@ local function executeSmoothArchCombo()
     end)
 end
 
+local CurrentLockTarget = nil
+local LockBodyGyro = nil
+local lastSearchTime = 0
+
+local function getLockTarget()
+    if tick() - lastSearchTime < 0.5 then return nil end
+    lastSearchTime = tick()
+
+    local localChar = LocalPlayer.Character
+    if not localChar then return nil end
+    local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+    if not localRoot then return nil end
+    
+    local bestTarget, shortestDist = nil, math.huge
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Health > 0 then
+            local tChar = obj.Parent
+            if tChar and tChar ~= localChar then
+                local tRoot = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso")
+                if tRoot then
+                    if LOCK_CONFIG.TargetMode == "Closest" then
+                        local d = (localRoot.Position - tRoot.Position).Magnitude
+                        if d < shortestDist then shortestDist = d; bestTarget = tChar end
+                    elseif LOCK_CONFIG.TargetMode == "Closest to Mouse" then
+                        local pos, onScreen = Camera:WorldToViewportPoint(tRoot.Position)
+                        if onScreen then
+                            local d = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(pos.X, pos.Y)).Magnitude
+                            if d < shortestDist then shortestDist = d; bestTarget = tChar end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return bestTarget
+end
+
+RunService:BindToRenderStep("MonolithTargetLock", Enum.RenderPriority.Camera.Value + 1, function()
+    if isUnloaded then return end
+    local localChar = LocalPlayer.Character
+    local humanoid = localChar and localChar:FindFirstChildOfClass("Humanoid")
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+
+    if not LOCK_CONFIG.Enabled then
+        CurrentLockTarget = nil
+        if wasLockedBody then 
+            if humanoid then humanoid.AutoRotate = true end
+            if LockBodyGyro then LockBodyGyro:Destroy(); LockBodyGyro = nil end
+            wasLockedBody = false 
+        end
+        return
+    end
+
+    if LOCK_CONFIG.StickyTarget and CurrentLockTarget then
+        local eHum = CurrentLockTarget:FindFirstChildOfClass("Humanoid")
+        if not (CurrentLockTarget.Parent and eHum and eHum.Health > 0) then
+            CurrentLockTarget = nil
+        end
+    end
+
+    if not CurrentLockTarget then CurrentLockTarget = getLockTarget() end
+    if not CurrentLockTarget or not localRoot or not humanoid then return end
+
+    local targetPart = CurrentLockTarget:FindFirstChild(LOCK_CONFIG.TargetPart) or CurrentLockTarget:FindFirstChild("HumanoidRootPart")
+    if not targetPart then return end
+
+    if LOCK_CONFIG.Method == "Camera" then
+        if wasLockedBody then 
+            humanoid.AutoRotate = true 
+            if LockBodyGyro then LockBodyGyro:Destroy(); LockBodyGyro = nil end
+            wasLockedBody = false 
+        end
+        local targetPos = targetPart.Position + (Camera.CFrame.RightVector * LOCK_CONFIG.SideOffset)
+        local targetCFrame = CFrame.lookAt(Camera.CFrame.Position, targetPos)
+        Camera.CFrame = Camera.CFrame:Lerp(targetCFrame, 0.4) 
+    elseif LOCK_CONFIG.Method == "Body" then
+        humanoid.AutoRotate = false
+        wasLockedBody = true
+        if not LockBodyGyro or LockBodyGyro.Parent ~= localRoot then
+            if LockBodyGyro then LockBodyGyro:Destroy() end
+            LockBodyGyro = Instance.new("BodyGyro")
+            LockBodyGyro.MaxTorque = Vector3.new(0, 400000, 0)
+            LockBodyGyro.P = 50000; LockBodyGyro.D = 500; LockBodyGyro.Parent = localRoot
+        end
+        LockBodyGyro.CFrame = CFrame.lookAt(localRoot.Position, Vector3.new(targetPart.Position.X, localRoot.Position.Y, targetPart.Position.Z))
+    end
+end)
+
+local function validatePosition(duration)
+    task.spawn(function()
+        local start = tick()
+        while tick() - start < (duration or 0.5) do
+            pcall(function()
+                ACTeleportRemote:FireServer(tick())
+            end)
+            task.wait(0.05)
+        end
+    end)
+end
+
 -- =======================================================
 -- 4. ESP ENGINE
 -- =======================================================
 local function CreateESP(player)
-    if not Drawing then return end
-    local esp = { 
-        Box = Drawing.new("Square"), 
-        Tracer = Drawing.new("Line"), 
-        Name = Drawing.new("Text"), 
-        Distance = Drawing.new("Text"), 
-        Health = Drawing.new("Text") 
-    }
-    esp.Box.Thickness = 1.5; esp.Box.Filled = false; esp.Tracer.Thickness = 1.5
-    for _, t in pairs({esp.Name, esp.Distance, esp.Health}) do 
-        t.Size = 16; t.Center = true; t.Outline = true 
+    -- Check if Drawing library exists before using it
+    if not Drawing then 
+        warn("[SedseHub] Drawing library not supported. ESP disabled.")
+        return 
     end
-    ESP_Cache[player] = esp
-end
 
 local function RemoveESP(player)
     if ESP_Cache[player] then
@@ -403,6 +498,11 @@ local function RemoveESP(player)
     end
 end
 
+    local esp = { Box = Drawing.new("Square"), Tracer = Drawing.new("Line"), Name = Drawing.new("Text"), Distance = Drawing.new("Text"), Health = Drawing.new("Text") }
+    esp.Box.Thickness = 1.5; esp.Box.Filled = false; esp.Tracer.Thickness = 1.5
+    for _, t in pairs({esp.Name, esp.Distance, esp.H}) do t.Size = 16; t.Center = true; t.Outline = true end
+    ESP_Cache[player] = esp
+end
 for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
 Players.PlayerAdded:Connect(CreateESP)
 Players.PlayerRemoving:Connect(RemoveESP)
@@ -412,6 +512,29 @@ espConnection = RunService.RenderStepped:Connect(function()
     local CurrentCamera = workspace.CurrentCamera
     if not CurrentCamera then return end
     
+    local itemsFolder = workspace:FindFirstChild("Items")
+    for item, hl in pairs(ItemHighlights) do if not item or not item.Parent then hl:Destroy(); ItemHighlights[item] = nil end end
+    for item, txt in pairs(ItemTexts) do if not item or not item.Parent then txt:Remove(); ItemTexts[item] = nil end end
+
+    if ESP_CONFIG.Item.Enabled and itemsFolder then
+        for _, item in pairs(itemsFolder:GetChildren()) do
+            if not ItemHighlights[item] then
+                local hl = Instance.new("Highlight"); hl.FillColor = ESP_CONFIG.Item.Color; hl.Parent = item; ItemHighlights[item] = hl
+            end
+            if not ItemTexts[item] then
+                local txt = Drawing.new("Text"); txt.Size = 16; txt.Center = true; txt.Outline = true; txt.Color = Color3.new(1, 1, 1); txt.Text = item.Name; ItemTexts[item] = txt
+            end
+            local itemPos = item:IsA("Model") and item:GetPivot().Position or (item:IsA("BasePart") and item.Position)
+            if itemPos then
+                local screenPos, onScreen = CurrentCamera:WorldToScreenPoint(itemPos)
+                if onScreen then ItemTexts[item].Visible = true; ItemTexts[item].Position = Vector2.new(screenPos.X, screenPos.Y - 25) else ItemTexts[item].Visible = false end
+            end
+        end
+    else
+        for item, hl in pairs(ItemHighlights) do hl:Destroy() end; ItemHighlights = {}
+        for item, txt in pairs(ItemTexts) do txt:Remove() end; ItemTexts = {}
+    end
+
     for player, esp in pairs(ESP_Cache) do
         local character = player.Character
         if character and character ~= LocalPlayer.Character then
@@ -452,13 +575,236 @@ espConnection = RunService.RenderStepped:Connect(function()
 end)
 
 -- =======================================================
--- 5. UI INTEGRATION
+-- 5. HELPER SYSTEMS
+-- =======================================================
+local function notify(msg, nType)
+    if Notifications and type(Notifications.create_notification) == "function" then
+        Notifications:create_notification({ name = msg, type = nType or "Info", duration = 4 })
+    else
+        print("[SedseHub] " .. tostring(msg))
+    end
+end
+
+local uiAccentColor, uiFontColor = Color3.fromRGB(100, 150, 255), Color3.fromRGB(240, 240, 240)
+local function colorMatch(c1, c2) return math.abs(c1.R - c2.R) < 0.005 and math.abs(c1.G - c2.G) < 0.005 and math.abs(c1.B - c2.B) < 0.005 end
+
+local _recolorThrottle = 0
+local function recolorUI(oldColor, newColor)
+    local now = tick()
+    if now - _recolorThrottle < 0.04 then return end
+    _recolorThrottle = now
+    local ui = CoreGui:FindFirstChild("MonolithUI") or LocalPlayer.PlayerGui:FindFirstChild("MonolithUI")
+    if not ui then return end
+    for _, obj in pairs(ui:GetDescendants()) do
+        if (obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox")) and colorMatch(obj.TextColor3, oldColor) then obj.TextColor3 = newColor end
+        if (obj:IsA("Frame") or obj:IsA("ImageLabel") or obj:IsA("TextButton")) and obj.BackgroundTransparency < 0.9 and colorMatch(obj.BackgroundColor3, oldColor) then obj.BackgroundColor3 = newColor end
+    end
+end
+
+local FS_ROOT, FS_CONFIGS, FS_COMBOS = "SedseHub", "SedseHub/settings", "SedseHub/Combos"
+local fsOK = (isfolder ~= nil and makefolder ~= nil and writefile ~= nil and readfile ~= nil and listfiles ~= nil and delfile ~= nil)
+local function ensureFolders()
+    if not isfolder(FS_ROOT) then makefolder(FS_ROOT) end
+    if not isfolder(FS_CONFIGS) then makefolder(FS_CONFIGS) end
+    if not isfolder(FS_COMBOS) then makefolder(FS_COMBOS) end
+end
+
+local function c3ToTbl(c) return { r = math.floor(c.R*255 + 0.5), g = math.floor(c.G*255 + 0.5), b = math.floor(c.B*255 + 0.5) } end
+local function tblToC3(t) return Color3.fromRGB(t.r or 255, t.g or 255, t.b or 255) end
+
+local function buildSnapshot()
+    return {
+        CONFIG = { Enabled = CONFIG.Enabled, MaxTargetDist = CONFIG.MaxTargetDist, BehindDistance = CONFIG.BehindDistance, WindupDelay = CONFIG.WindupDelay, FlightDuration = CONFIG.FlightDuration, LockDuration = CONFIG.LockDuration, CurveStrength = CONFIG.CurveStrength, ArchHeight = CONFIG.ArchHeight, DashCooldown = CONFIG.DashCooldown },
+        LOCK_CONFIG = { Enabled = LOCK_CONFIG.Enabled, Method = LOCK_CONFIG.Method, TargetMode = LOCK_CONFIG.TargetMode, TargetPart = LOCK_CONFIG.TargetPart, SideOffset = LOCK_CONFIG.SideOffset, StickyTarget = LOCK_CONFIG.StickyTarget },
+        ESP_CONFIG = { Box = { Enabled = ESP_CONFIG.Box.Enabled, Color = c3ToTbl(ESP_CONFIG.Box.Color) }, Name = { Enabled = ESP_CONFIG.Name.Enabled, Color = c3ToTbl(ESP_CONFIG.Name.Color) }, Health = { Enabled = ESP_CONFIG.Health.Enabled, Color = c3ToTbl(ESP_CONFIG.Health.Color) }, Distance = { Enabled = ESP_CONFIG.Distance.Enabled, Color = c3ToTbl(ESP_CONFIG.Distance.Color) }, Tracer = { Enabled = ESP_CONFIG.Tracer.Enabled, Color = c3ToTbl(ESP_CONFIG.Tracer.Color) }, Item = { Enabled = ESP_CONFIG.Item.Enabled, Color = c3ToTbl(ESP_CONFIG.Item.Color) } }
+    }
+end
+
+local function applySnapshot(data)
+    if data.CONFIG then for k, v in pairs(data.CONFIG) do if UI_Elements.CONFIG[k] and UI_Elements.CONFIG[k].set then UI_Elements.CONFIG[k]:set(v) end end end
+    if data.LOCK_CONFIG then for k, v in pairs(data.LOCK_CONFIG) do if UI_Elements.LOCK_CONFIG[k] then if UI_Elements.LOCK_CONFIG[k].set_value then UI_Elements.LOCK_CONFIG[k]:set_value(v) elseif UI_Elements.LOCK_CONFIG[k].set then UI_Elements.LOCK_CONFIG[k]:set(v) end end end end
+    if data.ESP_CONFIG then for key, val in pairs(data.ESP_CONFIG) do if UI_Elements.ESP_CONFIG[key] then if val.Enabled ~= nil and UI_Elements.ESP_CONFIG[key].Toggle then UI_Elements.ESP_CONFIG[key].Toggle:set(val.Enabled) end if val.Color and UI_Elements.ESP_CONFIG[key].Colorpicker then UI_Elements.ESP_CONFIG[key].Colorpicker:set(tblToC3(val.Color)) end end end end
+end
+
+local function getConfigNames()
+    if not fsOK then return {} end
+    ensureFolders()
+    local ok, files = pcall(listfiles, FS_CONFIGS)
+    if not ok then return {} end
+    local names = {}
+    for _, path in pairs(files) do local name = path:match("([^/\\]+)%.json$") if name then table.insert(names, name) end end
+    table.sort(names)
+    return names
+end
+
+local function fsSave(name, overwrite)
+    if not fsOK or name == "" then return false, "Invalid name or no FS API" end
+    ensureFolders()
+    local path = FS_CONFIGS .. "/" .. name .. ".json"
+    if not overwrite and isfile(path) then return false, "Exists - use Overwrite" end
+    local ok, err = pcall(writefile, path, HttpService:JSONEncode(buildSnapshot()))
+    return ok, ok and ('Saved "' .. name .. '"') or tostring(err)
+end
+
+local function fsLoad(name)
+    if not fsOK or name == "" then return false, "Invalid name or no FS API" end
+    local path = FS_CONFIGS .. "/" .. name .. ".json"
+    if not isfile(path) then return false, "Not found" end
+    local ok, content = pcall(readfile, path)
+    if not ok then return false, "Read error" end
+    local parsed, decoded = pcall(HttpService.JSONDecode, HttpService, content)
+    if not parsed then return false, "JSON error" end
+    local applied, applyErr = pcall(applySnapshot, decoded)
+    return applied, applied and ('Loaded "' .. name .. '"') or tostring(applyErr)
+end
+
+local function fsDelete(name)
+    if not fsOK or name == "" then return false, "Invalid name" end
+    local path = FS_CONFIGS .. "/" .. name .. ".json"
+    if not isfile(path) then return false, "Not found" end
+    local ok, err = pcall(delfile, path)
+    return ok, ok and ('Deleted "' .. name .. '"') or tostring(err)
+end
+
+-- =======================================================
+-- AUTO-BLOCK ENGINE (XENON-INSPIRED PRECISION)
+-- =======================================================
+local isBlocking = false
+local trackedAnimators = {} 
+local debugAntiSpam = {}
+
+local INSTA_BLOCK_IDS = {
+    ["123456789"] = true, 
+    ["987654321"] = true,
+}
+
+local SAFE_ANIM_KEYWORDS = {
+    "idle", "walk", "run", "jump", "fall", "land", "climb", "sit", "swim", "emote", "dance", "block", "stun", "death", "ragdoll", "getup", "spawn",
+    "hit", "hurt", "damage", "flinch", "knockback", "reaction", "hitstun", "recoil", "impact", "guard", "break", "recover",
+}
+
+local function isAnimSafe(animName)
+    local lower = animName:lower()
+    for _, keyword in pairs(SAFE_ANIM_KEYWORDS) do if string.find(lower, keyword) then return true end end
+    return false
+end
+
+local blockLockConnection = nil
+local function performBlock(attackerChar)
+    if isBlocking then return end
+    isBlocking = true
+    BlockRemote:FireServer()
+    if CONFIG.BlockLockOn and attackerChar then
+        local localChar = LocalPlayer.Character
+        local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+        local humanoid = localChar and localChar:FindFirstChildOfClass("Humanoid")
+        local enemyRoot = attackerChar:FindFirstChild("HumanoidRootPart")
+        if localRoot and humanoid and enemyRoot then
+            humanoid.AutoRotate = false
+            blockLockConnection = RunService.Heartbeat:Connect(function()
+                if localRoot and enemyRoot and enemyRoot.Parent then
+                    localRoot.CFrame = CFrame.lookAt(localRoot.Position, Vector3.new(enemyRoot.Position.X, localRoot.Position.Y, enemyRoot.Position.Z))
+                end
+            end)
+        end
+    end
+    task.delay(CONFIG.BlockDuration, function()
+        UnblockRemote:FireServer()
+        if blockLockConnection then blockLockConnection:Disconnect(); blockLockConnection = nil end
+        local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid.AutoRotate = true end
+        isBlocking = false
+    end)
+end
+
+local function hookAnimator(character, animator)
+    if trackedAnimators[animator] then return end 
+    trackedAnimators[animator] = animator.AnimationPlayed:Connect(function(track)
+        if not CONFIG.AutoBlock or isBlocking then return end
+        
+        local localChar = LocalPlayer.Character
+        if not localChar or character:IsDescendantOf(localChar) then return end
+        if Players:GetPlayerFromCharacter(character) == LocalPlayer then return end
+        
+        local localRoot = localChar:FindFirstChild("HumanoidRootPart")
+        local enemyRoot = character:FindFirstChild("HumanoidRootPart")
+        if not localRoot or not enemyRoot then return end
+        if (localRoot.Position - enemyRoot.Position).Magnitude > CONFIG.BlockDist then return end
+        
+        local animId = track.Animation.AnimationId:match("%d+$")
+        local animName = track.Name or ""
+
+        if _G.DebugBlocker and not debugAntiSpam[animId] then
+            debugAntiSpam[animId] = true
+            print("[AutoBlock] '" .. character.Name .. "' played ID: " .. tostring(animId) .. " | Name: " .. animName)
+            task.delay(2, function() debugAntiSpam[animId] = nil end)
+        end
+
+        if (animId and INSTA_BLOCK_IDS[animId]) or (not isAnimSafe(animName) and animId ~= "") then 
+            performBlock(character) 
+        end
+    end)
+end
+
+task.spawn(function()
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent ~= LocalPlayer.Character then
+            local animator = obj:FindFirstChildOfClass("Animator")
+            if animator then hookAnimator(obj.Parent, animator) end
+        end
+    end
+end)
+
+workspace.DescendantAdded:Connect(function(obj)
+    if obj:IsA("Animator") then
+        local hum = obj.Parent
+        if hum and hum:IsA("Humanoid") and hum.Parent ~= LocalPlayer.Character then hookAnimator(hum.Parent, obj) end
+    end
+end)
+
+workspace.DescendantRemoving:Connect(function(obj)
+    if obj:IsA("Animator") then
+        if trackedAnimators[obj] then trackedAnimators[obj]:Disconnect(); trackedAnimators[obj] = nil end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if piano_st == "Playing" then
+            if piano_idx > #piano_song then
+                if piano_looping then
+                    piano_idx, piano_lt = 1, 0
+                else
+                    piano_st, piano_idx, piano_lt = "Stopped", 1, 0
+                end
+            else
+                local e = piano_song[piano_idx]
+                local w = (e.time - piano_lt) / piano_speed
+                if w > 0.001 then task.wait(w) end
+                local window = math.max(0.01, 0.02 / piano_speed)
+                local ck, j = {}, piano_idx
+                while j <= #piano_song and (piano_song[j].time - e.time) <= window do
+                    local note = piano_song[j].note + piano_transpose
+                    local k = piano_nm[note]
+                    if k then table.insert(ck, k) end
+                    j = j + 1
+                end
+                if #ck > 0 then piano_playChord(ck) end
+                piano_lt, piano_idx = e.time, j
+            end
+        else
+            task.wait(0.1)
+        end
+        task.wait()
+    end
+end)
+
+-- =======================================================
+-- 6. UI INTEGRATION
 -- =======================================================
 pcall(function()
-    if not Library then return end
     local Window = Library:window({ Name = "Sedse JJS", Loading = true, Icon = "lucide:flame" })
     _G.ToggleMyMenu = function() Window.toggle_menu() end
-    
     local MainTab = Window:Tab({ Name = "BlackFlash", Icon = "lucide:sparkles" })
     local BlockTab = Window:Tab({ Name = "Auto Block", Icon = "lucide:shield"})
 	local MainSec = MainTab:Section({ Name = "Combo Config", side = "left" })
@@ -468,8 +814,8 @@ pcall(function()
     UI_Elements.CONFIG.Enabled = MainSec:Toggle({ Name = "Auto BlackFlash Chain", default = false, Callback = function(V) isEnabled = V end })
     UI_Elements.CONFIG.AutoBlackFlash = BlackFlashSec:Toggle({ Name = "Auto Blackflash", default = false, Callback = function(V) CONFIG.AutoBlackFlash = V end })
     UI_Elements.CONFIG.BlackFlashChainKey = BlackFlashSec:Keybind({ Name = "BlackFlash Chain Key", default = CONFIG.ActivationKey, Callback = function(KeyCode) CONFIG.ActivationKey = KeyCode end})
+    UI_Elements.CONFIG.BlackFlashDelay = BlackFlashSec:Slider({ Name = "Black Flash Delay", min = 0, max = 5, default = CONFIG.BlackFlashDelay, Callback = function(V) CONFIG.BlackFlashDelay = V end})
     UI_Elements.CONFIG.AutoBlock = BlockSec:Toggle({ Name = "Auto Block", default = false, Callback = function(V) CONFIG.AutoBlock = V end })
-
     UI_Elements.CONFIG.BlockLockOn = BlockSec:Toggle({ Name = "Block + Lock On", default = false, Callback = function(V) CONFIG.BlockLockOn = V end })
     UI_Elements.CONFIG.BlockDist = BlockSec:Slider({ Name = "Block Distance", min = 1, max = 30, default = CONFIG.BlockDist, Callback = function(V) CONFIG.BlockDist = V end })
     UI_Elements.CONFIG.BlockDuration = BlockSec:Slider({ Name = "Block Duration", min = 0.1, max = 2, default = CONFIG.BlockDuration, Callback = function(V) CONFIG.BlockDuration = V end })
