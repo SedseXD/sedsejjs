@@ -2,18 +2,22 @@
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
 local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/refs/heads/main/Library.lua?t=" .. tostring(tick())
-local success, result = pcall(function()
+
+-- Use a safer loading method
+local success, Library = pcall(function()
     return loadstring(game:HttpGet(loadUrl))()
 end)
 
-local Library, Notifications = nil, nil
-if success and result then
-    Library, Notifications = result[1] or result, result[2] or result.Notifications
-else
-    warn("[SedseHub] Failed to load UI Library. Script may not run.")
-    -- Fallback dummy library to prevent crashes
-    Library = { window = function() return { Tab = function() return { Section = function() return {} end end, toggle_menu = function() end } end }
+if not success or type(Library) ~= "table" then
+    warn("[SedseHub] Failed to load Library from GitHub. Using dummy fallback.")
+    Library = {
+        window = function() return { Tab = function() return { Section = function() return {} end end end, toggle_menu = function() end } end,
+        create_notification = function(_, cfg) print("Notification: " .. tostring(cfg.name)) end
+    }
 end
+
+-- Use Library itself for notifications if they are part of the same table
+local Notifications = Library 
 
 -- ==========================================
 -- 2. CONFIGURATION & STATE
