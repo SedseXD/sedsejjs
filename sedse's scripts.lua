@@ -2,16 +2,8 @@
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
 local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/refs/heads/main/Library.lua?t=" .. tostring(tick())
-local code = game:HttpGet(loadUrl)
+local Library, Notifications = loadstring(game:HttpGet(loadUrl))()
 
-local loadFunc, loadErr = loadstring(code)
-if not loadFunc then
-    warn("CRITICAL ERROR: Failed to load Library. URL might be wrong or Library has a syntax error.")
-    warn("Error Details:", loadErr)
-    return -- Stops the script safely instead of crashing on Line 1
-end
-
-local Library, Notifications = loadFunc()
 -- ==========================================
 -- 2. CONFIGURATION & STATE
 -- ==========================================
@@ -235,7 +227,8 @@ end
 local piano_nm = {
     [60]="1",[62]="2",[64]="3",[65]="4",[67]="5",[69]="6",[71]="7",[72]="8",[74]="9",[76]="0",
     [77]="q",[79]="w",[81]="e",[83]="r",[84]="t",[86]="y",[88]="u",[89]="i",[91]="o",[93]="p",
-    [95]="a",[96]="s",[98]="d",[100]="f",[102]="g",[103]="h",[105]="j",[107]="k",[108]="l",[110]="z",[112]="x",[114]="c",[115]="v",[117]="b",[119]="n",[121]="m",
+    [95]="a",[96]="s",[98]="d",[100]="f",[102]="g",[103]="h",[105]="j",[107]="k",[108]="l",
+    [110]="z",[112]="x",[114]="c",[115]="v",[117]="b",[119]="n",[121]="m",
     [61]="!",[63]="@",[66]="$",[68]="%",[70]="^",[73]="*",[75]="(",
     [78]="Q",[80]="W",[82]="E",[85]="T",[87]="Y",[90]="I",[92]="O",
     [94]="P",[97]="S",[99]="D",[101]="G",[104]="H",[106]="J",[109]="L",
@@ -243,7 +236,8 @@ local piano_nm = {
 }
 
 local piano_km = {
-    ["1"]=Enum.KeyCode.One,["2"]=Enum.KeyCode.Two,["3"]=Enum.KeyCode.Three,["4"]=Enum.KeyCode.Four,["5"]=Enum.KeyCode.Five,["6"]=Enum.KeyCode.Six,["7"]=Enum.KeyCode.Seven,["8"]=Enum.KeyCode.Eight,["9"]=Enum.KeyCode.Nine,["0"]=Enum.KeyCode.Zero,["q"]=Enum.KeyCode.Q,["w"]=Enum.KeyCode.W,["e"]=Enum.KeyCode.E,["r"]=Enum.KeyCode.R,["t"]=Enum.KeyCode.T,["y"]=Enum.KeyCode.Y,["u"]=Enum.KeyCode.U,["i"]=Enum.KeyCode.I,["o"]=Enum.KeyCode.O,["p"]=Enum.KeyCode.P,
+    ["1"]=Enum.KeyCode.One,["2"]=Enum.KeyCode.Two,["3"]=Enum.KeyCode.Three,["4"]=Enum.KeyCode.Four,["5"]=Enum.KeyCode.Five,["6"]=Enum.KeyCode.Six,["7"]=Enum.KeyCode.Seven,["8"]=Enum.KeyCode.Eight,["9"]=Enum.KeyCode.Nine,["0"]=Enum.KeyCode.Zero,
+    ["q"]=Enum.KeyCode.Q,["w"]=Enum.KeyCode.W,["e"]=Enum.KeyCode.E,["r"]=Enum.KeyCode.R,["t"]=Enum.KeyCode.T,["y"]=Enum.KeyCode.Y,["u"]=Enum.KeyCode.U,["i"]=Enum.KeyCode.I,["o"]=Enum.KeyCode.O,["p"]=Enum.KeyCode.P,
     ["a"]=Enum.KeyCode.A,["s"]=Enum.KeyCode.S,["d"]=Enum.KeyCode.D,["f"]=Enum.KeyCode.F,["g"]=Enum.KeyCode.G,["h"]=Enum.KeyCode.H,["j"]=Enum.KeyCode.J,["k"]=Enum.KeyCode.K,["l"]=Enum.KeyCode.L,["z"]=Enum.KeyCode.Z,["x"]=Enum.KeyCode.X,["c"]=Enum.KeyCode.C,["v"]=Enum.KeyCode.V,["b"]=Enum.KeyCode.B,["n"]=Enum.KeyCode.N,["m"]=Enum.KeyCode.M,
     ["!"]=Enum.KeyCode.One,["@"]=Enum.KeyCode.Two,["$"]=Enum.KeyCode.Four,["%"]=Enum.KeyCode.Five,["^"]=Enum.KeyCode.Six,["*"]=Enum.KeyCode.Eight,["("]=Enum.KeyCode.Nine,
     ["Q"]=Enum.KeyCode.Q,["W"]=Enum.KeyCode.W,["E"]=Enum.KeyCode.E,["T"]=Enum.KeyCode.T,["Y"]=Enum.KeyCode.Y,["I"]=Enum.KeyCode.I,["O"]=Enum.KeyCode.O,["P"]=Enum.KeyCode.P,["S"]=Enum.KeyCode.S,["D"]=Enum.KeyCode.D,["G"]=Enum.KeyCode.G,["H"]=Enum.KeyCode.H,["J"]=Enum.KeyCode.J,["L"]=Enum.KeyCode.L,["Z"]=Enum.KeyCode.Z,["C"]=Enum.KeyCode.C,["V"]=Enum.KeyCode.V,["B"]=Enum.KeyCode.B
@@ -506,7 +500,7 @@ end
 
     local esp = { Box = Drawing.new("Square"), Tracer = Drawing.new("Line"), Name = Drawing.new("Text"), Distance = Drawing.new("Text"), Health = Drawing.new("Text") }
     esp.Box.Thickness = 1.5; esp.Box.Filled = false; esp.Tracer.Thickness = 1.5
-    for _, t in pairs({esp.Name, esp.Distance, esp.Health}) do t.Size = 16; t.Center = true; t.Outline = true end
+    for _, t in pairs({esp.Name, esp.Distance, esp.H}) do t.Size = 16; t.Center = true; t.Outline = true end
     ESP_Cache[player] = esp
 end
 for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
@@ -808,7 +802,7 @@ end)
 -- =======================================================
 -- 6. UI INTEGRATION
 -- =======================================================
-
+pcall(function()
     local Window = Library:window({ Name = "Sedse JJS", Loading = true, Icon = "lucide:flame" })
     _G.ToggleMyMenu = function() Window.toggle_menu() end
     local MainTab = Window:Tab({ Name = "BlackFlash", Icon = "lucide:sparkles" })
@@ -1026,7 +1020,7 @@ end)
         if not ok then notify("Disk Save Error: " .. tostring(err), "Warning") else notify("Saved '" .. name .. "'", "Success") end
         currentRecording = {}
         comboNamesList = getComboNames()
-        if comboDropdownRef then comboDropdownRef:set_items(comboNamesList) end
+        if comboDropdownRef then comboDropdownRef:set(comboNamesList) end
         updateComboInfo(name)
     end
 
@@ -1097,12 +1091,12 @@ end)
     local selectedCombo = ""
     comboNamesList = getComboNames()
     comboDropdownRef = ComboPlaySec:Dropdown({ Name = "Select Combo", items = comboNamesList, default = "", Callback = function(V) selectedCombo = V; updateComboInfo(V) end })
-    ComboPlaySec:Button({ Name = "🔄  Refresh List", Callback = function() savedCombos = loadAllCombos(); comboNamesList = getComboNames(); if comboDropdownRef then comboDropdownRef:set_items(comboNamesList) end; notify("Combo list refreshed!", "Success") end })
+    ComboPlaySec:Button({ Name = "🔄  Refresh List", Callback = function() savedCombos = loadAllCombos(); comboNamesList = getComboNames(); if comboDropdownRef then comboDropdownRef:set(comboNamesList) end; notify("Combo list refreshed!", "Success") end })
     ComboPlaySec:Button({ Name = "▶️  Play Combo", Callback = function() if selectedCombo ~= "" then playCombo(selectedCombo) else notify("Select a combo first!", "Error") end end })
     ComboPlaySec:Button({ Name = "🗑️  Delete Combo", Callback = function()
         if selectedCombo ~= "" and savedCombos[selectedCombo] then
             savedCombos[selectedCombo] = nil; deleteComboFile(selectedCombo); comboNamesList = getComboNames()
-            if comboDropdownRef then comboDropdownRef:set_items(comboNamesList) end
+            if comboDropdownRef then comboDropdownRef:set(comboNamesList) end
             notify("Deleted '" .. selectedCombo .. "'", "Success"); selectedCombo = ""; if comboInfoLabel then comboInfoLabel:set("No combo selected") end
         end
     end })
@@ -1149,7 +1143,7 @@ end)
     PianoSec:Button({ Name = "🔄 Refresh Songs", Callback = function()
         local dn, lm = scanPiano()
         piano_fmap = lm
-        piano_drop:set_items(dn)
+        piano_drop:set(dn)
     end})
 
     PianoSec:Slider({ Name = "Speed", min = 0.25, max = 3, default = 1, Callback = function(v) piano_speed = v end})
@@ -1161,7 +1155,8 @@ end)
 
     local TPTab = Window:Tab({ Name = "Teleports", Icon = "lucide:map-pin" })
     local TPSec = TPTab:Section({ Name = "Locations", side = "left" })
-    local TP_LOCATIONS = {["Under the Map"] = Vector3.new(-20.23, -61.53, -146.34), ["Unlicensed Studios"] = Vector3.new(196.86, 23.58, -37.27), ["Towers"] = Vector3.new(25.35, 183.08, 110.77), ["Train Button"] = Vector3.new(182.21, -9.33, 562.54), ["Bowling"] = Vector3.new(267.60, -59.89, -255.06), ["Restaurant"] = Vector3.new(-43.24, 23.63, -83.07), ["Storage House"] = Vector3.new(195.69, 23.58, 151.44),["Sewers 1"] = Vector3.new(-148.14, -31.48, -127.22), ["Train Station"] = Vector3.new(185.27, -9.69, -97.17), ["Sewers 2"] = Vector3.new(60.84, -10.58, 167.47), ["Shenanigans Mall"] = Vector3.new(155.66, -26.38, -254.85), ["Rhythm Game"] = Vector3.new(12.23, -30.21, -315.03), ["Piano"] = Vector3.new(-86.38, 26.65, -252.48),["Convenience Store"] = Vector3.new(-247.51, 26.96, -116.64), ["Court"] = Vector3.new(124.48, 23.78, -247.06), ["Graveyard"] = Vector3.new(228.55, 23.68, -130.48),["Train Station Exit"] = Vector3.new(1.52, 24.72, 396.06), ["Tze's"] = Vector3.new(-55.30, 23.62, 245.42), ["Jail"] = Vector3.new(-243.84, 23.58, 126.97),
+    local TP_LOCATIONS = {
+        ["Under the Map"] = Vector3.new(-20.23, -61.53, -146.34), ["Unlicensed Studios"] = Vector3.new(196.86, 23.58, -37.27), ["Towers"] = Vector3.new(25.35, 183.08, 110.77), ["Train Button"] = Vector3.new(182.21, -9.33, 562.54), ["Bowling"] = Vector3.new(267.60, -59.89, -255.06), ["Restaurant"] = Vector3.new(-43.24, 23.63, -83.07), ["Storage House"] = Vector3.new(195.69, 23.58, 151.44), ["Sewers 1"] = Vector3.new(-148.14, -31.48, -127.22), ["Train Station"] = Vector3.new(185.27, -9.69, -97.17), ["Sewers 2"] = Vector3.new(60.84, -10.58, 167.47), ["Shenanigans Mall"] = Vector3.new(155.66, -26.38, -254.85), ["Rhythm Game"] = Vector3.new(12.23, -30.21, -315.03), ["Piano"] = Vector3.new(-86.38, 26.65, -252.48), ["Convenience Store"] = Vector3.new(-247.51, 26.96, -116.64), ["Court"] = Vector3.new(124.48, 23.78, -247.06), ["Graveyard"] = Vector3.new(228.55, 23.68, -130.48), ["Train Station Exit"] = Vector3.new(1.52, 24.72, 396.06), ["Tze's"] = Vector3.new(-55.30, 23.62, 245.42), ["Jail"] = Vector3.new(-243.84, 23.58, 126.97),
     }
     local tpLocationNames = {}
     for name, _ in pairs(TP_LOCATIONS) do table.insert(tpLocationNames, name) end
@@ -1246,7 +1241,7 @@ end
 
     GrabSec:Button({ Name = "🔄  Refresh Items", Callback = function()
         local newList = updateItemList()
-        itemDropdown:set_items(newList)
+        itemDropdown:set(newList)
         notify("Item list updated!", "Success")
     end })
 
@@ -1341,7 +1336,7 @@ end
     UI_Elements.ESP_CONFIG.Item.Toggle = ItemSec:Toggle({ Name = "Item Highlight", default = false, Callback = function(V) ESP_CONFIG.Item.Enabled = V end })
     UI_Elements.ESP_CONFIG.Item.Colorpicker = ItemSec:Colorpicker({ Name = "Item Color", default = ESP_CONFIG.Item.Color, Callback = function(V) ESP_CONFIG.Item.Color = V end })
 
-
+    
 -- =======================================================
 -- 7. UNLOAD LOGIC (FIXED FOR MOBILE)
 -- =======================================================
@@ -1536,4 +1531,4 @@ keybindConnection = UserInputService.InputBegan:Connect(function(input, gp)
     end
 end)
 
-print("--- Hub Loaded: Combat active, UI protected ---")this still keeps bugging with attempt to call a nil value on line 1256, please fix in snippets and figure out where exactly the script is crashing and please please please try to find the solution.
+print("--- Hub Loaded: Combat active, UI protected ---")
