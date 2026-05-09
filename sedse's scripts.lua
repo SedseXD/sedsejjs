@@ -1,7 +1,7 @@
 -- ==========================================
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
-local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/refs/heads/main/Library.lua?t=" .. tostring(tick())
+local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/main/Library.lua"
 
 -- Use a safer loading method
 local success, Library = pcall(function()
