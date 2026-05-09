@@ -1,14 +1,14 @@
 -- ==========================================
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
-local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/main/Library.lua?t=" .. tostring(tick())
+local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/refs/heads/main/Library.lua?t=" .. tostring(tick())
 local code = game:HttpGet(loadUrl)
 
 local loadFunc, loadErr = loadstring(code)
 if not loadFunc then
-    warn("CRITICAL ERROR: The Library.lua file on your GitHub has a syntax error!")
+    warn("CRITICAL ERROR: Failed to load Library. URL might be wrong or Library has a syntax error.")
     warn("Error Details:", loadErr)
-    return -- Stop the script from crashing further
+    return -- Stops the script safely instead of crashing on Line 1
 end
 
 local Library, Notifications = loadFunc()
