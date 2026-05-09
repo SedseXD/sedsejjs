@@ -1,11 +1,17 @@
 -- ==========================================
 -- 1. Load the Monolith Library (SedseUI)
 -- ==========================================
--- Using request() to bypass aggressive executor caching
 local loadUrl = "https://raw.githubusercontent.com/SedseXD/SedseUI/main/Library.lua?t=" .. tostring(tick())
-local response = request and request({Url = loadUrl, Method = "GET"}) or {Body = game:HttpGet(loadUrl)}
-local Library, Notifications = loadstring(response.Body)()
+local code = game:HttpGet(loadUrl)
 
+local loadFunc, loadErr = loadstring(code)
+if not loadFunc then
+    warn("CRITICAL ERROR: The Library.lua file on your GitHub has a syntax error!")
+    warn("Error Details:", loadErr)
+    return -- Stop the script from crashing further
+end
+
+local Library, Notifications = loadFunc()
 -- ==========================================
 -- 2. CONFIGURATION & STATE
 -- ==========================================
@@ -1020,7 +1026,7 @@ end)
         if not ok then notify("Disk Save Error: " .. tostring(err), "Warning") else notify("Saved '" .. name .. "'", "Success") end
         currentRecording = {}
         comboNamesList = getComboNames()
-        if comboDropdownRef then comboDropdownRef:set_items()(comboNamesList) end
+        if comboDropdownRef then comboDropdownRef:set_items(comboNamesList) end
         updateComboInfo(name)
     end
 
@@ -1240,7 +1246,7 @@ end
 
     GrabSec:Button({ Name = "🔄  Refresh Items", Callback = function()
         local newList = updateItemList()
-        itemDropdown:set_items()(newList)
+        itemDropdown:set_items(newList)
         notify("Item list updated!", "Success")
     end })
 
